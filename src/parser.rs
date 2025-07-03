@@ -277,7 +277,7 @@ mod tests {
 
     // Helper function to count nodes in an AST
     fn count_nodes(source: &str) -> usize {
-        let ast = parse(dbg!(source)).expect("failed to parse");
+        let ast = parse(source).expect("failed to parse");
         let mut count = 0;
         ast.traverse(&mut |_| {
             count += 1;
@@ -288,7 +288,7 @@ mod tests {
 
     // Helper function to collect all node types
     fn collect_node_info(source: &str) -> Vec<String> {
-        let ast = parse(dbg!(source)).expect("failed to parse");
+        let ast = parse(source).expect("failed to parse");
         let mut nodes = Vec::new();
         ast.traverse(&mut |node| {
             nodes.push(format!("{:?}", node));
