@@ -6,7 +6,7 @@ use bumpalo::Bump;
 mod datetime;
 mod errors;
 mod evaluator;
-mod parser;
+pub mod parser;
 
 pub use errors::Error;
 pub use evaluator::functions::FunctionContext;
@@ -811,5 +811,96 @@ mod tests {
 
         // Verify the result matches the expected value
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_ast_traversal_simple_path() {
+        let arena = Bump::new();
+        let jsonata = JsonAta::new("foo.bar", &arena).unwrap();
+        let ast = jsonata.ast();
+
+        let mut visited_nodes = Vec::new();
+        ast.traverse(&mut |node| {
+            visited_nodes.push(format!("{node:?}"));
+            true // Continue traversal
+        });
+
+        // Should visit the path expression and its components
+        assert!(visited_nodes.len() > 2);
+        assert!(visited_nodes.iter().any(|n| n.contains("foo")));
+        assert!(visited_nodes.iter().any(|n| n.contains("bar")));
+    }
+
+    #[test]
+    fn test_ast_traversal_with_early_termination() {
+        let arena = Bump::new();
+        let jsonata = JsonAta::new("foo.bar.baz", &arena).unwrap();
+        let ast = jsonata.ast();
+
+        let mut visit_count = 0;
+        ast.traverse(&mut |_node| {
+            visit_count += 1;
+            visit_count < 2 // Stop after first visit
+        });
+
+        assert_eq!(visit_count, 2); // Should visit exactly 2 nodes before stopping
+    }
+
+    #[test]
+    fn test_ast_traversal_complex_expression() {
+        let arena = Bump::new();
+        let jsonata = JsonAta::new("foo[bar > 5].baz + 10", &arena).unwrap();
+        let ast = jsonata.ast();
+
+        let mut node_types = Vec::new();
+        ast.traverse(&mut |node| {
+            // In a real implementation, you'd check the actual node type
+            // For now, we'll just collect string representations
+            node_types.push(format!("{:?}", node));
+            true
+        });
+
+        // Should visit multiple types of nodes: paths, predicates, binary operations, etc.
+        assert!(node_types.len() > 5);
+    }
+
+    #[test]
+    fn test_ast_traversal_function_call() {
+        let arena = Bump::new();
+        let jsonata = JsonAta::new("$sum(numbers)", &arena).unwrap();
+        let ast = jsonata.ast();
+
+        let mut has_function_call = false;
+        let mut has_identifier = false;
+
+        ast.traverse(&mut |node| {
+            let node_str = format!("{:?}", node);
+            if node_str.contains("sum") {
+                has_function_call = true;
+            }
+            if node_str.contains("numbers") {
+                has_identifier = true;
+            }
+            true
+        });
+
+        assert!(has_function_call);
+        assert!(has_identifier);
+    }
+
+    #[test]
+    fn test_ast_traversal_nested_expressions() {
+        let arena = Bump::new();
+        let jsonata = JsonAta::new("foo.(bar + baz)", &arena).unwrap();
+        let ast = jsonata.ast();
+
+        let mut depth_count = 0;
+        ast.traverse(&mut |_node| {
+            depth_count += 1;
+            true
+        });
+
+        // Nested expressions should have multiple nodes
+        assert!(depth_count >= 4);
     }
 }

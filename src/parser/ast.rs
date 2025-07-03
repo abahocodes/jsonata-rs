@@ -172,4 +172,193 @@ impl Ast {
             focus: None,
         }
     }
+
+    /// General-purpose traversal function that visits all nodes in the AST.
+    /// The visitor function is called for each node and can choose to continue
+    /// traversal or stop early by returning true/false.
+    pub fn traverse<F>(&self, visitor: &mut F) -> bool
+    where
+        F: FnMut(&Ast) -> bool,
+    {
+        // Visit the current node first
+        if !visitor(self) {
+            return false;
+        }
+
+        // Then traverse child nodes
+        match &self.kind {
+            AstKind::Empty
+            | AstKind::Null
+            | AstKind::Bool(_)
+            | AstKind::String(_)
+            | AstKind::Number(_)
+            | AstKind::Regex(_)
+            | AstKind::Name(_)
+            | AstKind::Var(_)
+            | AstKind::Wildcard
+            | AstKind::Descendent
+            | AstKind::Parent
+            | AstKind::PartialArg
+            | AstKind::Index(_) => {} // No children to traverse
+
+            AstKind::Unary(unary_op) => match unary_op {
+                UnaryOp::Minus(ast) => {
+                    if !ast.traverse(visitor) {
+                        return false;
+                    }
+                }
+                UnaryOp::ArrayConstructor(exprs) => {
+                    for expr in exprs {
+                        if !expr.traverse(visitor) {
+                            return false;
+                        }
+                    }
+                }
+                UnaryOp::ObjectConstructor(object) => {
+                    for (key, value) in object {
+                        if !key.traverse(visitor) || !value.traverse(visitor) {
+                            return false;
+                        }
+                    }
+                }
+            },
+
+            AstKind::Binary(_, lhs, rhs) => {
+                if !lhs.traverse(visitor) || !rhs.traverse(visitor) {
+                    return false;
+                }
+            }
+
+            AstKind::GroupBy(lhs, object) => {
+                if !lhs.traverse(visitor) {
+                    return false;
+                }
+                for (key, value) in object {
+                    if !key.traverse(visitor) || !value.traverse(visitor) {
+                        return false;
+                    }
+                }
+            }
+
+            AstKind::OrderBy(lhs, sort_terms) => {
+                if !lhs.traverse(visitor) {
+                    return false;
+                }
+                for (ast, _) in sort_terms {
+                    if !ast.traverse(visitor) {
+                        return false;
+                    }
+                }
+            }
+
+            AstKind::Block(exprs) => {
+                for expr in exprs {
+                    if !expr.traverse(visitor) {
+                        return false;
+                    }
+                }
+            }
+
+            AstKind::Function { proc, args, .. } => {
+                if !proc.traverse(visitor) {
+                    return false;
+                }
+                for arg in args {
+                    if !arg.traverse(visitor) {
+                        return false;
+                    }
+                }
+            }
+
+            AstKind::Lambda { args, body, .. } => {
+                for arg in args {
+                    if !arg.traverse(visitor) {
+                        return false;
+                    }
+                }
+                if !body.traverse(visitor) {
+                    return false;
+                }
+            }
+
+            AstKind::Ternary {
+                cond,
+                truthy,
+                falsy,
+            } => {
+                if !cond.traverse(visitor) || !truthy.traverse(visitor) {
+                    return false;
+                }
+                if let Some(falsy_ast) = falsy {
+                    if !falsy_ast.traverse(visitor) {
+                        return false;
+                    }
+                }
+            }
+
+            AstKind::Transform {
+                pattern,
+                update,
+                delete,
+            } => {
+                if !pattern.traverse(visitor) || !update.traverse(visitor) {
+                    return false;
+                }
+                if let Some(delete_ast) = delete {
+                    if !delete_ast.traverse(visitor) {
+                        return false;
+                    }
+                }
+            }
+
+            AstKind::Path(steps) => {
+                for step in steps {
+                    if !step.traverse(visitor) {
+                        return false;
+                    }
+                }
+            }
+
+            AstKind::Filter(ast) => {
+                if !ast.traverse(visitor) {
+                    return false;
+                }
+            }
+
+            AstKind::Sort(sort_terms) => {
+                for (ast, _) in sort_terms {
+                    if !ast.traverse(visitor) {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        // Traverse optional fields
+        if let Some((_, object)) = &self.group_by {
+            for (key, value) in object {
+                if !key.traverse(visitor) || !value.traverse(visitor) {
+                    return false;
+                }
+            }
+        }
+
+        if let Some(predicates) = &self.predicates {
+            for pred in predicates {
+                if !pred.traverse(visitor) {
+                    return false;
+                }
+            }
+        }
+
+        if let Some(stages) = &self.stages {
+            for stage in stages {
+                if !stage.traverse(visitor) {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
 }

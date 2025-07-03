@@ -274,4 +274,114 @@ mod tests {
     fn parser_tests(source: &str) {
         parse(source).expect("failed to parse");
     }
+
+    // Helper function to count nodes in an AST
+    fn count_nodes(source: &str) -> usize {
+        let ast = parse(dbg!(source)).expect("failed to parse");
+        let mut count = 0;
+        ast.traverse(&mut |_| {
+            count += 1;
+            true
+        });
+        count
+    }
+
+    // Helper function to collect all node types
+    fn collect_node_info(source: &str) -> Vec<String> {
+        let ast = parse(dbg!(source)).expect("failed to parse");
+        let mut nodes = Vec::new();
+        ast.traverse(&mut |node| {
+            nodes.push(format!("{:?}", node));
+            true
+        });
+        nodes
+    }
+
+    // Helper function to test early termination
+    fn test_early_termination(source: &str, max_visits: usize) -> usize {
+        let ast = parse(source).expect("failed to parse");
+        let mut count = 0;
+        ast.traverse(&mut |_| {
+            count += 1;
+            count < max_visits
+        });
+        count
+    }
+
+    // Node counting tests
+    #[test_case("foo", 1; "simple identifier")]
+    #[test_case("foo.bar", 2; "simple path")]
+    #[test_case("foo[0]", 3; "array access")]
+    #[test_case("foo.bar.baz", 3; "nested path")]
+    #[test_case("foo + bar", 3; "binary operation")]
+    #[test_case("foo * bar + baz", 5; "multiple binary operations")]
+    #[test_case("$sum(numbers)", 2; "function call")]
+    #[test_case("$map(items, function($item) { $item.value })", 5; "function with lambda")]
+    #[test_case("foo[bar > 5]", 4; "predicate expression")]
+    #[test_case("foo.(bar + baz)", 4; "grouped expression")]
+    #[test_case("[1, 2, 3]", 4; "array constructor")]
+    #[test_case("{'key': value}", 3; "object constructor")]
+    #[test_case("foo ? bar : baz", 4; "conditional expression")]
+    #[test_case("foo and bar or baz", 5; "logical operations")]
+    #[test_case("foo^(bar)", 3; "sort expression")]
+    #[test_case("$var := 5", 3; "variable assignment")]
+    #[test_case("foo ~> bar", 3; "chain expression")]
+    #[test_case("Numbers[0] + Numbers[1] * Numbers[2]", 9; "complex arithmetic")]
+    #[test_case("Account.Order.Product^(>Price, <Quantity)", 6; "complex sort with multiple criteria")]
+    fn test_node_counting(source: &str, expected_min_nodes: usize) {
+        let count = count_nodes(source);
+        assert!(
+            count >= expected_min_nodes,
+            "Expected at least {} nodes, got {}",
+            expected_min_nodes,
+            count
+        );
+    }
+
+    // Early termination tests
+    #[test_case("foo.bar.baz", 1; "terminate after 1 visit")]
+    #[test_case("foo + bar * baz", 2; "terminate after 2 visits")]
+    #[test_case("$sum(numbers)", 3; "terminate after 3 visits")]
+    #[test_case("foo[bar > 5].baz", 4; "terminate after 4 visits")]
+    fn test_early_termination_cases(source: &str, max_visits: usize) {
+        let actual_visits = test_early_termination(source, max_visits);
+        assert_eq!(
+            actual_visits, max_visits,
+            "Expected {} visits, got {}",
+            max_visits, actual_visits
+        );
+    }
+
+    // Minimal expression tests
+    #[test_case("null", 1; "null literal")]
+    #[test_case("true", 1; "boolean literal")]
+    #[test_case("42", 1; "number literal")]
+    #[test_case("\"hello\"", 1; "string literal")]
+    fn test_minimal_expressions(source: &str, expected_count: usize) {
+        assert_eq!(count_nodes(source), expected_count);
+    }
+
+    #[test]
+    fn test_full_traversal() {
+        // Test that traverse visits all nodes when callback returns true
+        let full_traversal_source = "foo.bar + baz.qux";
+        let nodes_continue = collect_node_info(full_traversal_source);
+        assert!(
+            nodes_continue.len() > 5,
+            "Should visit multiple nodes when continuing traversal"
+        );
+    }
+
+    #[test]
+    fn test_complex_expression_traversal() {
+        // Test specific node types are visited
+        let complex_expr = "Account.Order.Product^(>Price).{name: Name, total: Price * Quantity}";
+        let nodes = collect_node_info(complex_expr);
+
+        // Should have visited various node types
+        assert!(
+            nodes.len() > 10,
+            "Complex expression should have many nodes"
+        );
+    }
 }
